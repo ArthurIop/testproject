@@ -1,24 +1,39 @@
-import redis 
-from flask import Flask
-from flask import json
+import redis
+from flask import Flask, request, abort
+import settings
+import db
+from typing import List
+
+redis_instance = redis.Redis(db=1)
+
+def initialize_db(
+        redis_instance: redis.client.Redis,
+        cfg_keys: List[str],
+        default_value: int,
+        hashset_name: str
+) -> None:
+    for key in settings.cfg_keys:
+        redis_instance.hset(settings.hashset_name, key, settings.default_value)
+
+initialize_db(redis_instance, settings.cfg_keys, settings.default_value, settings.hashset_name)
 
 app = Flask(__name__)
 
-r = redis.Redis(db=0)
-keys = r.scan_iter('*')
-dick = dict()
 
-for key in keys:
-    key = key.decode("utf-8")
-    value = r.get(key)
-    value = value.decode("utf-8")
-    dick [key] = value
-    
-dick = json.dumps(dick)
+@app.route('/votes', methods=['POST'])
+def votes():
+    request_body = request.json
 
-@app.route('/all/')
-def all():
-    return json.loads(dick), 200
+    if not request_body or not settings.vote_key in request_body:
+        abort(400, 'This key does not exist')
+
+    voted_letter = request_body[settings.vote_key]
+
+    return db.vote_for(
+        voted_letter,
+        redis_instance,
+        settings.hashset_name
+    )
 
 if __name__ == '__main__':
     app.run()
